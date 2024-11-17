@@ -4,8 +4,9 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net/http"
 
-	_ "github.com/go-sql-driver/mysql" // MySQL driver
+	_ "github.com/go-sql-driver/mysql"
 )
 
 func main() {
@@ -17,7 +18,7 @@ func main() {
 	dbname := "reserveringsDB"
 
 	// Connection string
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?tls=true", user, password, host, port, dbname)
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s", user, password, host, port, dbname)
 
 	// Open the database connection
 	db, err := sql.Open("mysql", dsn)
@@ -34,25 +35,33 @@ func main() {
 
 	fmt.Println("Successfully connected to the database!")
 
-	// Query the database (example: list all tables)
-	rows, err := db.Query("SHOW TABLES")
-	if err != nil {
-		log.Fatalf("Failed to query the database: %v", err)
-	}
-	defer rows.Close()
-
-	fmt.Println("Tables in the database:")
-	for rows.Next() {
-		var tableName string
-		err = rows.Scan(&tableName)
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Query the database
+		rows, err := db.Query("SHOW TABLES")
 		if err != nil {
-			log.Fatalf("Failed to scan row: %v", err)
+			http.Error(w, "Failed to query the database", http.StatusInternalServerError)
+			return
 		}
-		fmt.Println(tableName)
-	}
+		defer rows.Close()
 
-	// Check for any error from iterating over rows
-	if err = rows.Err(); err != nil {
-		log.Fatalf("Error reading rows: %v", err)
-	}
+		fmt.Fprintln(w, "Tables in the database:")
+		for rows.Next() {
+			var tableName string
+			err = rows.Scan(&tableName)
+			if err != nil {
+				http.Error(w, "Failed to scan row", http.StatusInternalServerError)
+				return
+			}
+			fmt.Fprintln(w, tableName)
+		}
+
+		// Check for any error from iterating over rows
+		if err = rows.Err(); err != nil {
+			http.Error(w, "Error reading rows", http.StatusInternalServerError)
+		}
+	})
+
+	// Start the HTTP server
+	log.Println("Starting server on :8080")
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
